@@ -1,7 +1,4 @@
-﻿using RailwaySystem.Console.Application.Contracts;
-using RailwaySystem.Console.Domain;
-
-namespace RailwaySystem.Console.Application.Services;
+﻿namespace RailwaySystem.Console.Application.Services;
 
 public class RailcardPricingStrategy : IPricingStrategy
 {
@@ -34,7 +31,6 @@ public class TimePricingStrategy : IPricingStrategy
     {
         var time = train.DepartureTime.TimeOfDay;
 
-        // Lab 01: Rush Hour Definition
         bool isMorningRush = time < new TimeSpan(9, 30, 0);
         bool isEveningRush = time >= new TimeSpan(16, 0, 0) && time <= new TimeSpan(19, 30, 0);
 
@@ -43,13 +39,11 @@ public class TimePricingStrategy : IPricingStrategy
             return currentPrice;
         }
 
-        // Lab 01: Evening Discount (5%)
         if (time > new TimeSpan(19, 30, 0))
         {
             return currentPrice * 0.95m;
         }
 
-        // Default: Saver Time (Standard Price)
         return currentPrice;
     }
 }

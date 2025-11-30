@@ -6,7 +6,7 @@ PricingService _pricingService;
 BookingService _bookingService;
 ProfileService _profileService;
 
-// Localization 
+// Localization State
 string _currentLang;
 Dictionary<string, Dictionary<string, string>> _locales;
 
@@ -28,18 +28,17 @@ _currentLang = AnsiConsole.Prompt(
 // 5. Start Application Loop
 RunApplicationLoop();
 
+// --- Local Functions ---
+
 void ConfigureServices()
 {
-    // Setup Repositories with ID selectors
     _trainRepo = new JsonRepository<Train>("trains.json", t => Guid.NewGuid());
     _userRepo = new JsonRepository<UserProfile>("users.json", u => u.Id);
     _bookingRepo = new JsonRepository<Reservation>("bookings.json", r => r.Id);
 
-    // Seed Data if empty
     if (!_trainRepo.GetAll().Any()) SeedTrains();
 
-    // Setup Services
-    _pricingService = new PricingService(); // Uses Strategies internally
+    _pricingService = new PricingService();
     _bookingService = new BookingService(_bookingRepo);
     _profileService = new ProfileService(_userRepo);
 }
@@ -102,7 +101,6 @@ void HandleSearchAndBooking()
             .AddChoices(trainChoices.Keys));
 
     var selectedTrain = trainChoices[selectedString];
-
     AnsiConsole.MarkupLine($"[grey]Selected: {selectedTrain.Origin} -> {selectedTrain.Destination}[/]");
 
     var typeChoices = new Dictionary<string, TicketType>
@@ -118,20 +116,41 @@ void HandleSearchAndBooking()
 
     var ticketType = typeChoices[selectedTypeString];
 
-    var age = AnsiConsole.Ask<int>(T("AgeQ"));
-    var cardInput = AnsiConsole.Prompt(
-        new SelectionPrompt<RailcardType>()
-            .Title(T("CardQ"))
-            .AddChoices(Enum.GetValues<RailcardType>()));
+    Passenger passenger;
+    var profiles = _profileService.GetAllProfiles();
+    bool useProfile = false;
 
-    var passenger = new Passenger { Age = age, Railcard = cardInput };
+    if (profiles.Any())
+    {
+        useProfile = AnsiConsole.Confirm(T("LoadProfileQ"));
+    }
+
+    if (useProfile)
+    {
+        var profileChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<UserProfile>()
+                .Title(T("SelectProfileTitle"))
+                .AddChoices(profiles)
+                .UseConverter(p => $"{p.Username} (Age: {p.DefaultPassengerDetails.Age}, Card: {p.DefaultPassengerDetails.Railcard})"));
+
+        passenger = profileChoice.DefaultPassengerDetails;
+        AnsiConsole.MarkupLine($"[green]{T("ProfileLoaded")} {profileChoice.Username}![/]");
+    }
+    else
+    {
+        var age = AnsiConsole.Ask<int>(T("AgeQ"));
+        var cardInput = AnsiConsole.Prompt(
+            new SelectionPrompt<RailcardType>()
+                .Title(T("CardQ"))
+                .AddChoices(Enum.GetValues<RailcardType>()));
+
+        passenger = new Passenger { Age = age, Railcard = cardInput };
+    }
 
     decimal price = _pricingService.CalculatePrice(selectedTrain, passenger, ticketType);
-
     AnsiConsole.MarkupLine($"[bold]{T("TypeMsg")} {selectedTypeString}[/]");
     AnsiConsole.MarkupLine($"[bold yellow]{T("PriceMsg")} ${price}[/]");
 
-    // 6. Add to Cart
     if (AnsiConsole.Confirm(T("AddCartQ")))
     {
         var res = new Reservation
@@ -151,14 +170,57 @@ void HandleSearchAndBooking()
 
 void HandleProfileManagement()
 {
-    AnsiConsole.MarkupLine($"[bold]{T("Profile")}[/]");
+    var choice = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title(T("ProfileMenuTitle"))
+            .AddChoices(new[] { T("CreateProfile"), T("EditProfile"), T("Back") }));
 
-    var name = AnsiConsole.Ask<string>("Username:");
-    var age = AnsiConsole.Ask<int>("Age:");
+    if (choice == T("Back")) return;
 
-    _profileService.CreateProfile(name, age, RailcardType.None);
+    if (choice == T("CreateProfile"))
+    {
+        var name = AnsiConsole.Ask<string>(T("EnterName"));
+        var age = AnsiConsole.Ask<int>(T("AgeQ"));
 
-    AnsiConsole.MarkupLine($"[green]Profile for {name} created successfully.[/]");
+        var cardInput = AnsiConsole.Prompt(
+            new SelectionPrompt<RailcardType>()
+                .Title(T("CardQ"))
+                .AddChoices(Enum.GetValues<RailcardType>()));
+
+        _profileService.CreateProfile(name, age, cardInput);
+        AnsiConsole.MarkupLine($"[green]{T("ProfileLoaded")} {name}[/]");
+    }
+    else if (choice == T("EditProfile"))
+    {
+        var profiles = _profileService.GetAllProfiles();
+        if (!profiles.Any())
+        {
+            AnsiConsole.MarkupLine("[yellow]No profiles found.[/]");
+        }
+        else
+        {
+            var selectedProfile = AnsiConsole.Prompt(
+                new SelectionPrompt<UserProfile>()
+                    .Title(T("SelectProfileTitle"))
+                    .AddChoices(profiles)
+                    .UseConverter(p => $"{p.Username} | Age: {p.DefaultPassengerDetails.Age} | Card: {p.DefaultPassengerDetails.Railcard}"));
+
+            if (AnsiConsole.Confirm($"Edit {selectedProfile.Username}?"))
+            {
+                var newAge = AnsiConsole.Ask<int>(T("AgeQ"));
+                var newCard = AnsiConsole.Prompt(
+                        new SelectionPrompt<RailcardType>()
+                        .Title(T("CardQ"))
+                        .AddChoices(Enum.GetValues<RailcardType>()));
+
+                selectedProfile.DefaultPassengerDetails.Age = newAge;
+                selectedProfile.DefaultPassengerDetails.Railcard = newCard;
+                _userRepo.Update(selectedProfile);
+
+                AnsiConsole.MarkupLine("[green]Profile Updated![/]");
+            }
+        }
+    }
     Pause();
 }
 
@@ -166,28 +228,66 @@ void HandleCartViewing()
 {
     var carts = _bookingService.GetMyReservations();
 
-    if (carts.Count == 0)
+    if (!carts.Any())
     {
         AnsiConsole.MarkupLine("[yellow]Cart is empty.[/]");
+        Pause();
+        return;
     }
-    else
-    {
-        var table = new Table();
-        table.AddColumn("Route");
-        table.AddColumn("Price");
-        table.AddColumn("Status");
-        table.AddColumn("Expires");
 
-        foreach (var c in carts)
+    var table = new Table();
+    table.AddColumn("Id");
+    table.AddColumn("Route");
+    table.AddColumn("Type");
+    table.AddColumn("Price");
+    table.AddColumn("Status");
+
+    var choices = new Dictionary<string, Reservation>();
+
+    foreach (var c in carts)
+    {
+        var display = $"{c.Train.Origin}->{c.Train.Destination} ({c.TicketType}) - ${c.FinalPrice} [{c.Status}]";
+        choices.Add(display, c);
+        table.AddRow(c.Id.ToString().Substring(0, 4), $"{c.Train.Origin}->{c.Train.Destination}", c.TicketType.ToString(), $"${c.FinalPrice}", c.Status.ToString());
+    }
+    AnsiConsole.Write(table);
+
+    var action = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title(T("CartMenuTitle"))
+            .AddChoices(T("Back"), T("CancelRes"), T("ModifyRes")));
+
+    if (action == T("Back")) return;
+
+    var selectedString = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title(T("SelectRes"))
+            .AddChoices(choices.Keys));
+
+    var selectedRes = choices[selectedString];
+
+    if (action == T("CancelRes"))
+    {
+        if (AnsiConsole.Confirm("Are you sure?"))
         {
-            table.AddRow(
-                $"{c.Train.Origin}->{c.Train.Destination}",
-                $"${c.FinalPrice}",
-                c.Status.ToString(),
-                c.CreatedAt.AddDays(7).ToShortDateString()
-            );
+            _bookingService.CancelReservation(selectedRes.Id);
+            AnsiConsole.MarkupLine($"[red]{T("ResCancelled")}[/]");
         }
-        AnsiConsole.Write(table);
+    }
+    else if (action == T("ModifyRes"))
+    {
+        var newType = AnsiConsole.Prompt(
+            new SelectionPrompt<TicketType>()
+                .Title(T("TicketTypeTitle"))
+                .AddChoices(TicketType.OneWay, TicketType.Return));
+
+        decimal newPrice = _pricingService.CalculatePrice(selectedRes.Train, selectedRes.Passenger, newType);
+
+        if (AnsiConsole.Confirm($"Update to {newType} (${newPrice})?"))
+        {
+            _bookingService.ModifyReservation(selectedRes.Id, newType, newPrice);
+            AnsiConsole.MarkupLine($"[green]{T("ResModified")}[/]");
+        }
     }
     Pause();
 }
@@ -198,7 +298,7 @@ void SeedTrains()
     {
         Origin = "Sofia",
         Destination = "Plovdiv",
-        DepartureTime = DateTime.Today.AddHours(7).AddMinutes(30), // 07:30
+        DepartureTime = DateTime.Today.AddHours(7).AddMinutes(30),
         BasePrice = 15.00m
     });
 
@@ -206,7 +306,7 @@ void SeedTrains()
     {
         Origin = "Plovdiv",
         Destination = "Sofia",
-        DepartureTime = DateTime.Today.AddHours(8).AddMinutes(15), // 08:15
+        DepartureTime = DateTime.Today.AddHours(8).AddMinutes(15),
         BasePrice = 15.00m
     });
 
@@ -214,7 +314,7 @@ void SeedTrains()
     {
         Origin = "Sofia",
         Destination = "Varna",
-        DepartureTime = DateTime.Today.AddHours(10).AddMinutes(0), // 10:00
+        DepartureTime = DateTime.Today.AddHours(10).AddMinutes(0),
         BasePrice = 32.00m
     });
 
@@ -222,7 +322,7 @@ void SeedTrains()
     {
         Origin = "Sofia",
         Destination = "Burgas",
-        DepartureTime = DateTime.Today.AddHours(13).AddMinutes(45), // 13:45
+        DepartureTime = DateTime.Today.AddHours(13).AddMinutes(45),
         BasePrice = 28.50m
     });
 
@@ -230,7 +330,7 @@ void SeedTrains()
     {
         Origin = "Ruse",
         Destination = "Sofia",
-        DepartureTime = DateTime.Today.AddHours(15).AddMinutes(30), // 15:30
+        DepartureTime = DateTime.Today.AddHours(15).AddMinutes(30),
         BasePrice = 24.00m
     });
 
@@ -238,7 +338,7 @@ void SeedTrains()
     {
         Origin = "Varna",
         Destination = "Sofia",
-        DepartureTime = DateTime.Today.AddHours(17).AddMinutes(15), // 17:15
+        DepartureTime = DateTime.Today.AddHours(17).AddMinutes(15),
         BasePrice = 32.00m
     });
 
@@ -246,7 +346,7 @@ void SeedTrains()
     {
         Origin = "Plovdiv",
         Destination = "Burgas",
-        DepartureTime = DateTime.Today.AddHours(18).AddMinutes(45), // 18:45
+        DepartureTime = DateTime.Today.AddHours(18).AddMinutes(45),
         BasePrice = 19.00m
     });
 
@@ -254,7 +354,7 @@ void SeedTrains()
     {
         Origin = "Burgas",
         Destination = "Sofia",
-        DepartureTime = DateTime.Today.AddHours(22).AddMinutes(00), // 22:00 (Sleeper)
+        DepartureTime = DateTime.Today.AddHours(22).AddMinutes(00),
         BasePrice = 35.00m
     });
 }
@@ -271,10 +371,10 @@ string T(string key)
     {
         return _locales[_currentLang][key];
     }
-    return key; // Fallback
+    return key;
 }
 
-static Dictionary<string, Dictionary<string, string>> GetLocalizationDictionary()
+Dictionary<string, Dictionary<string, string>> GetLocalizationDictionary()
 {
     return new Dictionary<string, Dictionary<string, string>>
     {
@@ -284,11 +384,11 @@ static Dictionary<string, Dictionary<string, string>> GetLocalizationDictionary(
             { "Search", "Search Trains" }, { "Profile", "Manage Profiles" }, { "Cart", "View My Cart" }, { "Exit", "Exit" },
             { "EnterDest", "Enter Destination:" }, { "BookQ", "Book a ticket?" }, { "AgeQ", "Enter Age:" }, { "CardQ", "Select Railcard" },
             { "PriceMsg", "Calculated Price:" }, { "AddCartQ", "Add to Cart?" }, { "AddedMsg", "Ticket added to cart!" },
-            { "TicketTypeTitle", "Select Ticket Type" },
-            { "OneWay", "One-Way" },
-            { "Return", "Round Trip" },
-            { "TypeMsg", "Ticket Type:" },
-            { "SelectTrainTitle", "Select a Train" }
+            { "TicketTypeTitle", "Select Ticket Type" }, { "OneWay", "One-Way" }, { "Return", "Round Trip" }, { "TypeMsg", "Ticket Type:" },
+            { "LoadProfileQ", "Load passenger details from a Profile?" }, { "SelectProfileTitle", "Select User Profile" }, { "ProfileLoaded", "Loaded details for" }, { "SelectTrainTitle", "Select a Train" },
+            { "ProfileMenuTitle", "Profile Management" }, { "CreateProfile", "Create New Profile" }, { "EditProfile", "Edit/View Profiles" }, { "EnterName", "Enter Username:" },
+            { "CartMenuTitle", "Your Reservations" }, { "CancelRes", "Cancel Reservation" }, { "ModifyRes", "Modify Ticket Type" }, { "Back", "Back to Main Menu" },
+            { "ResCancelled", "Reservation Cancelled." }, { "ResModified", "Reservation Updated." }, { "SelectRes", "Select a reservation to manage" }
         },
         ["Français"] = new() {
             { "Header", "Système Ferroviaire" }, { "Ready", "Système Prêt." },
@@ -296,11 +396,11 @@ static Dictionary<string, Dictionary<string, string>> GetLocalizationDictionary(
             { "Search", "Rechercher des trains" }, { "Profile", "Gérer les profils" }, { "Cart", "Voir mon panier" }, { "Exit", "Quitter" },
             { "EnterDest", "Entrez la destination:" }, { "BookQ", "Réserver un billet?" }, { "AgeQ", "Entrez l'âge:" }, { "CardQ", "Carte de réduction" },
             { "PriceMsg", "Prix calculé:" }, { "AddCartQ", "Ajouter au panier?" }, { "AddedMsg", "Billet ajouté!" },
-            { "TicketTypeTitle", "Sélectionnez le type de billet" },
-            { "OneWay", "Aller simple" },
-            { "Return", "Aller-retour" },
-            { "TypeMsg", "Type de billet:" },
-            { "SelectTrainTitle", "Sélectionnez un train" }
+            { "TicketTypeTitle", "Sélectionnez le type de billet" }, { "OneWay", "Aller simple" }, { "Return", "Aller-retour" }, { "TypeMsg", "Type de billet:" },
+            { "LoadProfileQ", "Charger les détails depuis un profil ?" }, { "SelectProfileTitle", "Sélectionnez un profil utilisateur" }, { "ProfileLoaded", "Détails chargés pour" }, { "SelectTrainTitle", "Sélectionnez un train" },
+            { "ProfileMenuTitle", "Gestion de profil" }, { "CreateProfile", "Créer un nouveau profil" }, { "EditProfile", "Modifier/Voir les profils" }, { "EnterName", "Entrez le nom d'utilisateur :" },
+            { "CartMenuTitle", "Vos réservations" }, { "CancelRes", "Annuler la réservation" }, { "ModifyRes", "Modifier le type de billet" }, { "Back", "Retour au menu principal" },
+            { "ResCancelled", "Réservation annulée." }, { "ResModified", "Réservation mise à jour." }, { "SelectRes", "Sélectionnez une réservation à gérer" }
         },
         ["Deutsch"] = new() {
             { "Header", "Eisenbahnsystem" }, { "Ready", "System Bereit." },
@@ -308,11 +408,11 @@ static Dictionary<string, Dictionary<string, string>> GetLocalizationDictionary(
             { "Search", "Züge suchen" }, { "Profile", "Profile verwalten" }, { "Cart", "Warenkorb ansehen" }, { "Exit", "Ausgang" },
             { "EnterDest", "Ziel eingeben:" }, { "BookQ", "Ein Ticket buchen?" }, { "AgeQ", "Alter eingeben:" }, { "CardQ", "Bahncard wählen" },
             { "PriceMsg", "Berechneter Preis:" }, { "AddCartQ", "In den Warenkorb?" }, { "AddedMsg", "Ticket hinzugefügt!" },
-            { "TicketTypeTitle", "Ticketart wählen" },
-            { "OneWay", "Einfache Fahrt" },
-            { "Return", "Hin- und Rückfahrt" },
-            { "TypeMsg", "Ticketart:" },
-            { "SelectTrainTitle", "Wählen Sie einen Zug" }
+            { "TicketTypeTitle", "Ticketart wählen" }, { "OneWay", "Einfache Fahrt" }, { "Return", "Hin- und Rückfahrt" }, { "TypeMsg", "Ticketart:" },
+            { "LoadProfileQ", "Fahrgastdaten aus Profil laden?" }, { "SelectProfileTitle", "Benutzerprofil auswählen" }, { "ProfileLoaded", "Details geladen für" }, { "SelectTrainTitle", "Wählen Sie einen Zug" },
+            { "ProfileMenuTitle", "Profilverwaltung" }, { "CreateProfile", "Neues Profil erstellen" }, { "EditProfile", "Profile bearbeiten/anzeigen" }, { "EnterName", "Benutzername eingeben:" },
+            { "CartMenuTitle", "Ihre Reservierungen" }, { "CancelRes", "Reservierung stornieren" }, { "ModifyRes", "Ticketart ändern" }, { "Back", "Zurück zum Hauptmenü" },
+            { "ResCancelled", "Reservierung storniert." }, { "ResModified", "Reservierung aktualisiert." }, { "SelectRes", "Wählen Sie eine Reservierung" }
         },
         ["Español"] = new() {
             { "Header", "Sistema Ferroviario" }, { "Ready", "Sistema Listo." },
@@ -320,11 +420,11 @@ static Dictionary<string, Dictionary<string, string>> GetLocalizationDictionary(
             { "Search", "Buscar Trenes" }, { "Profile", "Gestionar Perfiles" }, { "Cart", "Ver Mi Carrito" }, { "Exit", "Salir" },
             { "EnterDest", "Introduce destino:" }, { "BookQ", "¿Reservar un billete?" }, { "AgeQ", "Introduce Edad:" }, { "CardQ", "Seleccionar tarjeta" },
             { "PriceMsg", "Precio calculado:" }, { "AddCartQ", "¿Añadir al carrito?" }, { "AddedMsg", "¡Añadido al carrito!" },
-            { "TicketTypeTitle", "Seleccionar tipo de billete" },
-            { "OneWay", "Solo ida" },
-            { "Return", "Ida y vuelta" },
-            { "TypeMsg", "Tipo de billete:" },
-            { "SelectTrainTitle", "Seleccionar un tren" }
+            { "TicketTypeTitle", "Seleccionar tipo de billete" }, { "OneWay", "Solo ida" }, { "Return", "Ida y vuelta" }, { "TypeMsg", "Tipo de billete:" },
+            { "LoadProfileQ", "¿Cargar detalles de un perfil?" }, { "SelectProfileTitle", "Seleccionar perfil de usuario" }, { "ProfileLoaded", "Detalles cargados para" }, { "SelectTrainTitle", "Seleccionar un tren" },
+            { "ProfileMenuTitle", "Gestión de Perfiles" }, { "CreateProfile", "Crear Nuevo Perfil" }, { "EditProfile", "Editar/Ver Perfiles" }, { "EnterName", "Introduce Nombre de Usuario:" },
+            { "CartMenuTitle", "Tus Reservas" }, { "CancelRes", "Cancelar Reserva" }, { "ModifyRes", "Modificar Tipo de Billete" }, { "Back", "Volver al Menú Principal" },
+            { "ResCancelled", "Reserva Cancelada." }, { "ResModified", "Reserva Actualizada." }, { "SelectRes", "Selecciona una reserva" }
         }
     };
 }
