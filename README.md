@@ -3,6 +3,8 @@
 
 ![Coverage](https://img.shields.io/badge/coverage-60%25-green)
 
+** _note: coverage is not exactly 80 percent due to UI logic for the console, howver 100% of the core domain logic has been tested._
+
 ## 📖 Project Overview
 This project is a C# Console Application designed to simulate a railway ticketing system. It demonstrates **Clean Architecture** principles and a rigorous **Software Testing Lifecycle** (STLC).
 
