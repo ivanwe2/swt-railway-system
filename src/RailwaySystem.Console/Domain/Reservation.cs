@@ -9,6 +9,7 @@ public class Reservation
     public Passenger Passenger { get; set; }
     public decimal FinalPrice { get; set; }
     public ReservationStatus Status { get; set; }
+    public TicketType TicketType { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public bool IsExpired() => (DateTime.Now - CreatedAt).TotalDays > 7;

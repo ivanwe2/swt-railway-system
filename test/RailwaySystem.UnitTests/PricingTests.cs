@@ -75,4 +75,19 @@ public class PricingTests
         // 100 * 0.95 = 95. 95 * 0.66 = 62.7
         Assert.Equal(62.7m, result);
     }
+
+    [Fact]
+    public void CalculatePrice_ReturnTicket_DoublesBasePrice()
+    {
+        // Arrange
+        var service = new PricingService();
+        var train = new Train { BasePrice = 100, DepartureTime = DateTime.Today.AddHours(12) };
+        var passenger = new Passenger { Age = 30, Railcard = RailcardType.None };
+
+        // Act
+        var result = service.CalculatePrice(train, passenger, TicketType.Return);
+
+        // Assert
+        Assert.Equal(200m, result);
+    }
 }
