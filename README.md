@@ -1,8 +1,7 @@
 # Railway Ticketing Portal 🚂
 ### Software Testing Coursework - Final Submission
 
-![Build Status](https://github.com/username/repo/actions/workflows/build.yml/badge.svg)
-![Coverage](https://img.shields.io/badge/coverage-80%25-green)
+![Coverage](https://img.shields.io/badge/coverage-60%25-green)
 
 ## 📖 Project Overview
 This project is a C# Console Application designed to simulate a railway ticketing system. It demonstrates **Clean Architecture** principles and a rigorous **Software Testing Lifecycle** (STLC).
