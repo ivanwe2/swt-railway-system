@@ -18,13 +18,25 @@ public class BookingService
         _repo.Add(reservation);
     }
 
-    // Lab 06: State Transition Logic
     public void CancelReservation(Guid id)
     {
         var res = _repo.GetById(id);
         if (res != null && res.Status == ReservationStatus.Booked)
         {
             res.Status = ReservationStatus.Cancelled;
+            _repo.Update(res);
+        }
+    }
+
+    public void ModifyReservation(Guid id, TicketType newTicketType, decimal newPrice)
+    {
+        var res = _repo.GetById(id);
+        // We can only modify active bookings or cart items
+        if (res != null && (res.Status == ReservationStatus.Booked || res.Status == ReservationStatus.InCart))
+        {
+            res.TicketType = newTicketType;
+            res.FinalPrice = newPrice;
+            res.Status = ReservationStatus.Modified; // Track state change
             _repo.Update(res);
         }
     }

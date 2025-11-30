@@ -1,0 +1,11 @@
+Req ID,Description,Test Method,Test Case ID,Status
+FR-01,Search Functionality (Interactive),Manual/UAT,TC-UI-SEARCH-01,PASS
+FR-02,Ticket Types (OneWay/Return),Unit Test,PricingTests.CalculatePrice_ReturnTicket_DoublesBasePrice,PASS
+FR-03,Cart Persistence (7 Days),Unit Test,BookingServiceTests.GetMyReservations_Filters_Expired_Carts,PASS
+FR-04,Rush Hour Pricing (07:30-09:30),Unit Test,PricingTests.PricingService_RushHour_OverridesDiscounts,PASS
+FR-05,Evening Discount (After 19:30),Unit Test,PricingTests.PricingService_Cumulative_Discount_Check,PASS
+FR-06,Senior Discount (34%),Unit/Condition,PricingTests.RailcardStrategy_SeniorCondition_Check,PASS
+FR-07,Family Discount (50%),Unit/Decision,PricingTests.RailcardStrategy_FamilyCard_Apply50Percent,PASS
+FR-08,Modify/Cancel Reservation,Unit/State,BookingServiceTests.CancelReservation_ChangesState_To_Cancelled,PASS
+FR-09,Profile Management (Add/Edit),Manual/UAT,TC-UI-PROFILE-01,PASS
+FR-10,Load Profile into Booking,Manual/UAT,TC-UI-PROFILE-02,PASS
