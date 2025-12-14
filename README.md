@@ -1,7 +1,7 @@
 # Railway Ticketing Portal 🚂
 ### Software Testing Coursework - Final Submission
 
-![Coverage](https://img.shields.io/badge/coverage-81%-g)
+![Coverage](https://img.shields.io/badge/coverage-81%25-green)
 
 ** _Note: Coverage is approximately 81% for Domain and Application layers. UI layer has lower coverage due to Spectre.Console interaction._
 
